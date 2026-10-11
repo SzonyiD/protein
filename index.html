@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0B0C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Protein">
+<title>Protein</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="preload" href="fonts/unbounded-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/dm-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main id="app">
+
+  <!-- MA -->
+  <section class="screen" id="screen-ma" aria-labelledby="day-weekday">
+    <header class="top">
+      <div class="daynav">
+        <button class="icon-btn" id="day-prev" aria-label="Előző nap">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="daylabel">
+          <div class="eyebrow" id="day-weekday">Vasárnap</div>
+          <div class="display-sm" id="day-date">Október 11.</div>
+        </div>
+        <button class="icon-btn" id="day-next" aria-label="Következő nap">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <button class="pill" id="weight-pill" aria-label="Testsúly rögzítése"><span id="weight-val">88,0</span> kg</button>
+    </header>
+
+    <button class="today-chip" id="go-today" hidden>Vissza a mai naphoz</button>
+
+    <div class="hero">
+      <div class="ring" role="img" id="ring-wrap" aria-label="">
+        <svg viewBox="0 0 230 230" aria-hidden="true">
+          <circle class="ring-bg" cx="115" cy="115" r="96"/>
+          <circle class="ring-fg" id="ring-fg" cx="115" cy="115" r="96"/>
+        </svg>
+        <div class="ring-center">
+          <div class="ring-num" id="ring-num">0</div>
+          <div class="ring-sub">/ <span id="ring-target">160</span> g</div>
+        </div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><div class="tile-l" id="t-missing-l">Hiányzik</div><div class="tile-v accent" id="t-missing">–</div></div>
+        <div class="tile"><div class="tile-l">g/kg</div><div class="tile-v" id="t-gkg">–</div></div>
+        <div class="tile"><div class="tile-l">Sorozat</div><div class="tile-v" id="t-streak">–</div></div>
+      </div>
+      <button class="train-toggle" id="train-toggle" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M3 9v6M21 9v6M6.5 12h11"/></svg>
+        <span id="train-label">Edzésnap?</span>
+      </button>
+    </div>
+
+    <form class="omni" id="omni" autocomplete="off">
+      <label for="omni-in" class="sr">Mit ettél?</label>
+      <input id="omni-in" type="text" enterkeyhint="done" placeholder="pl. Túrórudi 12 g">
+      <button class="add-btn" type="submit" aria-label="Hozzáadás">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </form>
+
+    <div class="block">
+      <div class="eyebrow">Gyors bevitel</div>
+      <div class="quick" id="quick"></div>
+    </div>
+
+    <div class="block">
+      <div class="row-head"><div class="eyebrow" id="log-title">Ma</div><button class="link-btn" id="manual-btn">+ Kézi</button></div>
+      <div class="card log" id="log"></div>
+    </div>
+
+    <div class="block">
+      <div class="row-head"><div class="eyebrow">Utolsó 7 nap</div><div class="muted small">átlag <b id="avg7">–</b></div></div>
+      <div class="card week">
+        <div class="bars" id="bars"></div>
+        <div class="bar-labels" id="bar-labels"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATISZTIKA -->
+  <section class="screen" id="screen-stat" hidden>
+    <header class="top"><div class="display-sm">Statisztika</div></header>
+    <div class="card soon">
+      <div class="display-sm">Hamarosan</div>
+      <p class="muted">A részletes ábrák (30/90 nap, hőtérkép, étkezési eloszlás, edzésnap vs pihenőnap) a 4. lépésben érkeznek. Addig is minden adatot gyűjt az app.</p>
+    </div>
+  </section>
+
+  <!-- SÚLY -->
+  <section class="screen" id="screen-suly" hidden>
+    <header class="top"><div class="display-sm">Súly</div><button class="pill" id="weight-add">+ Mérés</button></header>
+    <div class="card log" id="weight-log"></div>
+    <p class="muted small pad">A trendgörbe és a heti fogyási ütem a 3. lépésben érkezik.</p>
+  </section>
+
+  <!-- BEÁLLÍTÁSOK -->
+  <section class="screen" id="screen-beall" hidden>
+    <header class="top"><div class="display-sm">Beállítások</div></header>
+    <div class="card form">
+      <label class="field">
+        <span class="field-l">Fehérje szorzó <b id="gpk-val">1,8</b> g/kg</span>
+        <input type="range" id="gpk" min="1.6" max="2.2" step="0.1" value="1.8">
+        <span class="muted small" id="gpk-hint">Napi cél: 160 g</span>
+      </label>
+    </div>
+    <div class="block">
+      <div class="eyebrow">Adatmentés</div>
+      <div class="card form">
+        <p class="muted small">Az adataid csak ezen a telefonon tárolódnak. Időnként ments egy példányt.</p>
+        <button class="btn" id="export-btn">Mentés exportálása</button>
+        <label class="btn ghost" for="import-file">Mentés visszatöltése</label>
+        <input type="file" id="import-file" accept="application/json,.json" class="sr">
+      </div>
+    </div>
+    <p class="muted small pad" id="version">Protein · 1. lépés</p>
+  </section>
+</main>
+
+<nav class="tabbar" aria-label="Fő navigáció">
+  <button class="tab active" data-screen="ma"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 8 8"/></svg><span>Ma</span></button>
+  <button class="tab" data-screen="stat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-7"/></svg><span>Statisztika</span></button>
+  <button class="tab" data-screen="suly"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l5-5 4 3 7-8"/></svg><span>Súly</span></button>
+  <button class="tab" data-screen="beall"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg><span>Beállítás</span></button>
+</nav>
+
+<div class="sheet-backdrop" id="backdrop" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+  <div class="sheet-grab" aria-hidden="true"></div>
+  <div class="sheet-title display-sm" id="sheet-title"></div>
+  <div id="sheet-body"></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden>
+  <span id="toast-msg"></span>
+  <button class="toast-btn" id="toast-undo">Visszavonás</button>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
