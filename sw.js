@@ -1,5 +1,5 @@
 // Offline cache. Új kiadásnál a VERSION-t kell emelni.
-const VERSION = 'protein-v1';
+const VERSION = 'protein-v2';
 const SHELL = [
   './',
   'index.html',
@@ -7,6 +7,8 @@ const SHELL = [
   'app.js',
   'calc.js',
   'db.js',
+  'foods.js',
+  'stats.js',
   'manifest.webmanifest',
   'icon-192.png',
   'icon-512.png',
@@ -18,7 +20,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (ev) => {
-  ev.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  ev.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (ev) => {

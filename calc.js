@@ -2,13 +2,18 @@
 
 export const DEFAULT_SETTINGS = { gPerKg: 1.8, startWeight: 88 };
 
+// A sablonok a kódban élnek (nem a tárolóban), így frissítéskor az új gombok is megjelennek.
+// items: a fehérjeforrások bontása a statisztikához.
 export const DEFAULT_TEMPLATES = [
-  { id: 'reggeli', name: 'Reggeli', detail: '6 ek zab + joghurt', kind: 'fixed', protein: 23 },
-  { id: 'prewo', name: 'Pre-workout', detail: 'banán + YoPro', kind: 'fixed', protein: 26 },
+  { id: 'reggeli', name: 'Reggeli', detail: '6 ek zab + joghurt', kind: 'fixed', protein: 23,
+    items: [{ key: 'joghurt', name: 'Proteines joghurt', cat: 'tejtermek', protein: 16 }, { key: 'zab', name: 'Zabpehely', cat: 'novenyi', protein: 7 }] },
+  { id: 'prewo', name: 'Pre-workout', detail: 'banán + YoPro', kind: 'fixed', protein: 26,
+    items: [{ key: 'yopro', name: 'YoPro', cat: 'tejtermek', protein: 25 }, { key: 'banan', name: 'Banán', cat: 'novenyi', protein: 1 }] },
   { id: 'shake', name: 'Shake', detail: 'por + tej', kind: 'shake', scoop: 27, milkPerL: 50, defaultMl: 300 },
   { id: 'csirke', name: 'Csirkemell', detail: 'gramm alapján', kind: 'chicken', raw: 23, cooked: 31 },
   { id: 'prepit', name: 'Prepit ebéd', detail: 'mentett menük', kind: 'prepit' },
   { id: 'tegnap', name: 'Tegnapi nap', detail: 'ismétlés', kind: 'repeat' },
+  { id: 'etel', name: 'Étel', detail: 'tojás, hús, hal, tejtermék…', kind: 'food' },
 ];
 
 const WEEKDAYS = ['Vasárnap', 'Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat'];

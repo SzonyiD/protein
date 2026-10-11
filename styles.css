@@ -207,7 +207,10 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
 .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); font-weight: 700; }
 .stepper { display: grid; grid-template-columns: 52px 1fr 52px; gap: 8px; align-items: center; }
 .stepper button { min-height: 50px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); font-size: 22px; }
-.stepper input { text-align: center; }
+.stepper input {
+  text-align: center; width: 100%; min-height: 50px; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 12px; font-size: 18px; font-weight: 700; outline: none; color: var(--text);
+}
 .result {
   display: flex; justify-content: space-between; align-items: baseline; padding: 14px 16px;
   background: var(--surface-2); border-radius: 14px;
@@ -243,3 +246,69 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- 2. lépés ---------- */
+.q-wide { grid-column: 1 / -1; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; }
+.x-btn {
+  width: 36px; height: 36px; flex: none; border: 0; border-radius: 10px; background: none; color: var(--muted);
+  font-size: 22px; line-height: 1; display: grid; place-items: center;
+}
+
+/* előnézet, kosár */
+.pv { display: flex; flex-direction: column; background: var(--surface-2); border-radius: 14px; }
+.pv:empty { display: none; }
+.pv-row { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 6px 0 14px; }
+.pv-row + .pv-row { border-top: 1px solid var(--line); }
+.pv-name { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-val { font-weight: 700; white-space: nowrap; }
+.pv-row.unk { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 6px 12px 14px; }
+.pv-unk-head { display: flex; align-items: center; gap: 10px; }
+.pv-row.unk .row2 { padding-right: 8px; align-items: end; }
+.tag { font-size: 11.5px; font-weight: 700; color: #1A1306; background: #E8B23A; border-radius: 6px; padding: 2px 7px; }
+.chk { display: flex; align-items: center; gap: 8px; min-height: 50px; font-size: 14px; color: var(--muted); }
+.chk input { width: 22px; height: 22px; accent-color: var(--accent); }
+
+/* étel lap */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; max-height: 30vh; overflow: auto; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2); font-size: 14px; font-weight: 500;
+}
+.chip.on { border-color: var(--accent); color: var(--accent); }
+.food-panel { display: flex; flex-direction: column; gap: 10px; }
+.seg-n button { font-size: 14px; }
+.btn:disabled { opacity: .35; }
+
+/* statisztika */
+.pad-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.hbar { display: grid; grid-template-columns: 116px 1fr 52px; align-items: center; gap: 10px; min-height: 26px; }
+.hbar-l { display: flex; align-items: center; gap: 8px; font-size: 13.5px; white-space: nowrap; overflow: hidden; }
+.hbar-track { height: 12px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.hbar-fill { display: block; height: 100%; border-radius: 0 4px 4px 0; transition: width .5s cubic-bezier(.2,.8,.2,1); }
+.hbar-v { text-align: right; font-weight: 700; font-size: 14px; }
+.sbars { height: 140px; }
+.sbar {
+  flex: 1; height: 100%; border: 0; padding: 0; background: none; display: flex; flex-direction: column-reverse;
+  justify-content: flex-start; gap: 2px; border-radius: 4px; position: relative;
+}
+.sbar .seg-fill { display: block; width: 100%; flex: none; }
+.sbar .seg-fill:last-child { border-radius: 4px 4px 0 0; }
+.sbar .seg-empty { display: block; width: 100%; height: 4px; background: var(--bar); border-radius: 4px; }
+.sbar:not(.sel) .seg-fill { opacity: .55; }
+.st-detail { min-height: 20px; line-height: 1.4; }
+.st-detail b { font-weight: 700; margin-right: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding-top: 4px; border-top: 1px solid var(--line-soft); }
+.lg { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); padding-top: 8px; }
+.top-row { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 16px; }
+.top-row + .top-row { border-top: 1px solid var(--line-soft); }
+.streak { font-size: 11.5px; font-weight: 700; color: var(--accent); border: 1px solid rgba(200, 255, 46, .4); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.top-share { font-size: 13px; color: var(--muted); width: 40px; text-align: right; }
+
+/* heti mentés sáv */
+.banner {
+  display: flex; align-items: center; gap: 10px; background: rgba(200, 255, 46, .08);
+  border: 1px solid rgba(200, 255, 46, .35); border-radius: var(--r-lg); padding: 10px 6px 10px 14px; margin-top: -8px;
+}
+.banner-t { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 14.5px; }
+.banner-btn { min-height: 40px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 0 14px; }

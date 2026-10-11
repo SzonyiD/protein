@@ -37,6 +37,12 @@
       <button class="pill" id="weight-pill" aria-label="Testsúly rögzítése"><span id="weight-val">88,0</span> kg</button>
     </header>
 
+    <div class="banner" id="backup-banner" hidden>
+      <div class="banner-t"><b>Heti mentés esedékes</b><span class="muted small">Mentsd a Fájlokba, iCloud Drive-ba.</span></div>
+      <button class="banner-btn" id="backup-go">Mentés</button>
+      <button class="x-btn" id="backup-close" aria-label="Később">×</button>
+    </div>
+
     <button class="today-chip" id="go-today" hidden>Vissza a mai naphoz</button>
 
     <div class="hero">
@@ -63,7 +69,7 @@
 
     <form class="omni" id="omni" autocomplete="off">
       <label for="omni-in" class="sr">Mit ettél?</label>
-      <input id="omni-in" type="text" enterkeyhint="done" placeholder="pl. Túrórudi 12 g">
+      <input id="omni-in" type="text" enterkeyhint="done" placeholder="pl. 2 tojás + 100 g túró">
       <button class="add-btn" type="submit" aria-label="Hozzáadás">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       </button>
@@ -90,10 +96,27 @@
 
   <!-- STATISZTIKA -->
   <section class="screen" id="screen-stat" hidden>
-    <header class="top"><div class="display-sm">Statisztika</div></header>
-    <div class="card soon">
-      <div class="display-sm">Hamarosan</div>
-      <p class="muted">A részletes ábrák (30/90 nap, hőtérkép, étkezési eloszlás, edzésnap vs pihenőnap) a 4. lépésben érkeznek. Addig is minden adatot gyűjt az app.</p>
+    <header class="top"><div class="daylabel"><div class="eyebrow">Utolsó 7 nap</div><div class="display-sm">Statisztika</div></div></header>
+    <div class="tiles" id="st-tiles"></div>
+
+    <div class="block">
+      <div class="eyebrow">Ma · kategóriánként</div>
+      <div class="card pad-card" id="st-today"></div>
+    </div>
+
+    <div class="block">
+      <div class="eyebrow">7 nap · kategóriák</div>
+      <div class="card week">
+        <div class="bars sbars" id="st-bars"></div>
+        <div class="bar-labels" id="st-labels"></div>
+        <div class="st-detail small" id="st-detail"></div>
+        <div class="legend" id="st-legend"></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="row-head"><div class="eyebrow">Top források · 7 nap</div><div class="muted small">sorozat · arány · gramm</div></div>
+      <div class="card log" id="st-top"></div>
     </div>
   </section>
 
@@ -117,13 +140,13 @@
     <div class="block">
       <div class="eyebrow">Adatmentés</div>
       <div class="card form">
-        <p class="muted small">Az adataid csak ezen a telefonon tárolódnak. Időnként ments egy példányt.</p>
+        <p class="muted small">Az adataid csak ezen a telefonon tárolódnak. Hetente egyszer az app magától is emlékeztet. <span id="backup-info"></span></p>
         <button class="btn" id="export-btn">Mentés exportálása</button>
         <label class="btn ghost" for="import-file">Mentés visszatöltése</label>
         <input type="file" id="import-file" accept="application/json,.json" class="sr">
       </div>
     </div>
-    <p class="muted small pad" id="version">Protein · 1. lépés</p>
+    <p class="muted small pad" id="version">Protein · 2. lépés</p>
   </section>
 </main>
 

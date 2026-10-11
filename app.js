@@ -1,5 +1,7 @@
 import * as db from './db.js';
 import * as c from './calc.js';
+import * as F from './foods.js';
+import * as St from './stats.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -14,19 +16,23 @@ const S = {
   templates: c.DEFAULT_TEMPLATES,
   prepit: [],
   training: {},
+  customFoods: [],
+  foodUse: {},
+  lastBackup: null,
+  backupSnooze: null,
 };
 
 // ---------- betöltés ----------
 async function load() {
   [S.entries, S.weights] = await Promise.all([db.getAll('entries'), db.getAll('weights')]);
   S.settings = { ...c.DEFAULT_SETTINGS, ...(await db.getKV('settings', {})) };
-  S.templates = await db.getKV('templates', null);
-  if (!S.templates) {
-    S.templates = c.DEFAULT_TEMPLATES;
-    await db.setKV('templates', S.templates);
-  }
+  S.templates = c.DEFAULT_TEMPLATES;
   S.prepit = await db.getKV('prepit', []);
   S.training = await db.getKV('training', {});
+  S.customFoods = await db.getKV('foods', []);
+  S.foodUse = await db.getKV('foodUse', {});
+  S.lastBackup = await db.getKV('lastBackup', null);
+  S.backupSnooze = await db.getKV('backupSnooze', null);
   if (!S.weights.length) {
     const w = { date: S.today, kg: S.settings.startWeight };
     S.weights = [w];
@@ -39,15 +45,25 @@ const targetOf = (key) => c.targetFor(weightFor(key), S.settings.gPerKg);
 const dayEntries = (key) => S.entries.filter((e) => e.date === key).sort((a, b) => a.time.localeCompare(b.time));
 
 // ---------- adatműveletek ----------
-async function addEntry({ name, protein, time, date, source }) {
+const allFoods = () => [...S.customFoods, ...F.FOODS];
+const r1 = (x) => Math.round(x * 10) / 10;
+const fmtG = (g) => c.fmt(g, g % 1 ? 1 : 0);
+
+async function bumpUse(ids) {
+  for (const id of ids) S.foodUse[id] = (S.foodUse[id] || 0) + 1;
+  await db.setKV('foodUse', S.foodUse);
+}
+
+async function addEntry({ name, protein, time, date, source, items }) {
   const e = {
     id: c.uid(),
     date: date || S.day,
     time: time || (S.day === S.today ? c.timeHM() : '12:00'),
     name: String(name).trim() || 'Tétel',
-    protein: Math.round(protein * 10) / 10,
+    protein: r1(protein),
     source: source || 'manual',
   };
+  if (items && items.length) e.items = items.map((i) => ({ ...i, protein: r1(i.protein) }));
   S.entries.push(e);
   await db.put('entries', e);
   return e;
@@ -112,7 +128,8 @@ function renderQuick() {
     else if (t.kind === 'chicken') val = '<span class="q-val dim">g →</span>';
     else if (t.kind === 'prepit') val = '<span class="q-val dim">lista</span>';
     else if (t.kind === 'repeat') val = '<span class="q-val dim">↺</span>';
-    return `<button class="q" data-t="${esc(t.id)}"><span class="q-name">${esc(t.name)}</span>${val}</button>`;
+    else if (t.kind === 'food') val = '<span class="q-val dim">tojás, hús, hal… →</span>';
+    return `<button class="q${t.kind === 'food' ? ' q-wide' : ''}" data-t="${esc(t.id)}"><span class="q-name">${esc(t.name)}</span>${val}</button>`;
   }).join('');
 }
 
@@ -168,10 +185,109 @@ function renderBeall() {
   $('gpk-hint').textContent = `Napi cél ${c.fmt(weightFor(S.today), 1)} kg mellett: ${targetOf(S.today)} g`;
 }
 
+// ---------- Statisztika ----------
+let statSel = null;
+
+function renderStat() {
+  const N = 7;
+  const sum = St.summary(S.entries, S.today, N, targetOf, weightFor);
+  $('st-tiles').innerHTML = `
+    <div class="tile"><div class="tile-l">Átlag</div><div class="tile-v">${sum.avg == null ? '–' : `${c.fmt(sum.avg)} g`}</div></div>
+    <div class="tile"><div class="tile-l">Átlag g/kg</div><div class="tile-v">${sum.avgGkg == null ? '–' : c.fmt(sum.avgGkg, 2)}</div></div>
+    <div class="tile"><div class="tile-l">Cél teljesült</div><div class="tile-v">${sum.hit}/${sum.logged || 0} nap</div></div>`;
+
+  // ma, kategóriánként
+  const todayCats = St.catTotals(S.entries.filter((e) => e.date === S.today));
+  const maxC = Math.max(1, ...todayCats.map((x) => x.grams));
+  $('st-today').innerHTML = todayCats.length ? todayCats.map((x) => `
+    <div class="hbar">
+      <span class="hbar-l">${dot(x.cat)}${F.CATS[x.cat].label}</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:${(x.grams / maxC) * 100}%;background:${F.CATS[x.cat].color}"></span></span>
+      <span class="hbar-v">${fmtG(x.grams)} g</span>
+    </div>`).join('') : '<div class="empty" style="padding:4px 0">Ma még nincs bejegyzés.</div>';
+
+  // 7 nap, rétegzett oszlopok
+  const days = St.daysByCat(S.entries, S.today, N);
+  const target = targetOf(S.today);
+  const max = Math.max(target * 1.2, ...days.map((d) => d.total * 1.06));
+  const H = 140 - 2 * 7; // a szegmensek közti 2 px-es rések helye, hogy a legmagasabb oszlop se lógjon ki
+  if (!statSel || !days.some((d) => d.key === statSel)) statSel = S.today;
+  $('st-bars').innerHTML = `<div class="target-line" style="bottom:${(target / max) * H}px"></div>` + days.map((d) => {
+    const segs = d.cats.map((x) => `<span class="seg-fill" style="height:${(x.grams / max) * H}px;background:${F.CATS[x.cat].color}"></span>`).join('');
+    return `<button class="sbar${d.key === statSel ? ' sel' : ''}" data-sday="${d.key}" aria-label="${c.dateLabel(d.key).date}: ${c.fmt(d.total)} gramm">${segs || '<span class="seg-empty"></span>'}</button>`;
+  }).join('');
+  $('st-labels').innerHTML = days.map((d) => `<span class="${d.key === statSel ? 'sel' : ''}">${d.label}</span>`).join('');
+  const used = F.CAT_ORDER.filter((k) => days.some((d) => d.cats.some((x) => x.cat === k)));
+  $('st-legend').innerHTML = used.map((k) => `<span class="lg">${dot(k)}${F.CATS[k].label}</span>`).join('');
+  const sd = days.find((d) => d.key === statSel);
+  $('st-detail').innerHTML = sd.total
+    ? `<b>${c.dateLabel(sd.key).date} · ${fmtG(sd.total)} g</b> <span class="muted">${sd.cats.map((x) => `${F.CATS[x.cat].label} ${fmtG(x.grams)}`).join(' · ')}</span>`
+    : `<b>${c.dateLabel(sd.key).date}</b> <span class="muted">nincs bejegyzés</span>`;
+
+  // top források
+  const top = St.topSources(S.entries, S.today, N).slice(0, 8);
+  $('st-top').innerHTML = top.length ? top.map((t) => `
+    <div class="top-row">${dot(t.cat)}
+      <span class="e-name">${esc(t.name)}</span>
+      ${t.streak >= 2 ? `<span class="streak">${t.streak} napja</span>` : ''}
+      <span class="top-share">${c.fmt(t.share * 100)}%</span>
+      <span class="e-val">${fmtG(t.grams)} g</span>
+    </div>`).join('') : '<div class="empty">Még nincs adat.</div>';
+}
+
+$('st-bars').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-sday]');
+  if (b) { statSel = b.dataset.sday; renderStat(); }
+});
+
+// ---------- heti mentés ----------
+function backupDue() {
+  if (!S.entries.length || S.backupSnooze === S.today) return false;
+  const since = S.lastBackup || S.entries.reduce((m, e) => (e.date < m ? e.date : m), S.today);
+  return c.addDays(since, 7) <= S.today;
+}
+
+function renderBackup() {
+  $('backup-banner').hidden = !backupDue();
+  $('backup-info').textContent = S.lastBackup ? `Utolsó mentés: ${c.dateLabel(S.lastBackup).date}` : 'Még nem készült mentés.';
+}
+
+async function doExport() {
+  const data = await db.exportAll();
+  const name = `protein-mentes-${S.today}.json`;
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+  const file = new File([blob], name, { type: 'application/json' });
+  let ok = false;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Protein mentés' }); ok = true; } catch (err) { if (err.name === 'AbortError') return false; }
+  }
+  if (!ok) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+  S.lastBackup = S.today;
+  await db.setKV('lastBackup', S.today);
+  renderBackup();
+  toast('Mentés kész.');
+  return true;
+}
+
+$('backup-go').addEventListener('click', doExport);
+$('backup-close').addEventListener('click', async () => {
+  S.backupSnooze = S.today;
+  await db.setKV('backupSnooze', S.today);
+  renderBackup();
+});
+
 function render() {
   renderMa();
   renderSuly();
   renderBeall();
+  renderStat();
+  renderBackup();
 }
 
 // ---------- toast ----------
@@ -218,7 +334,9 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('sh
 
 function entrySheet(existing, preset = {}) {
   const e = existing || { name: preset.name || '', protein: preset.protein ?? '', time: S.day === S.today ? c.timeHM() : '12:00' };
+  const parts = existing ? St.itemsOf(existing) : [];
   openSheet(existing ? 'Bejegyzés' : 'Kézi bevitel', `
+    ${parts.length > 1 ? `<div class="pv">${parts.map((i) => `<div class="pv-row">${dot(i.cat)}<span class="pv-name">${esc(i.name)}</span><span class="pv-val">${fmtG(i.protein)} g</span></div>`).join('')}</div>` : ''}
     <label class="field"><span class="field-l">Megnevezés</span>
       <input type="text" id="f-name" value="${esc(e.name)}" placeholder="pl. Görög joghurt" ${existing || preset.name ? '' : 'data-autofocus'}></label>
     <div class="row2">
@@ -236,13 +354,17 @@ function entrySheet(existing, preset = {}) {
       const time = root.querySelector('#f-time').value || c.timeHM();
       if (!name || !(protein >= 0)) { root.querySelector(name ? '#f-prot' : '#f-name').focus(); return; }
       if (existing) {
-        Object.assign(existing, { name, protein: Math.round(protein * 10) / 10, time });
+        const np = r1(protein);
+        if (existing.items && existing.items.length && np !== existing.protein && existing.protein > 0) {
+          existing.items = existing.items.map((i) => ({ ...i, protein: r1((i.protein / existing.protein) * np) }));
+        }
+        Object.assign(existing, { name, protein: np, time });
         await db.put('entries', existing);
         closeSheet();
         render();
       } else {
         closeSheet();
-        await quickAdd({ name, protein, time, source: 'manual' });
+        await quickAdd({ name, protein, time, source: 'manual', items: [{ key: `x-${F.norm(name)}`, name, cat: 'egyeb', protein }] });
       }
     });
     const del = root.querySelector('#f-del');
@@ -280,7 +402,9 @@ function shakeSheet(t) {
     upd();
     root.querySelector('#ml-add').addEventListener('click', async () => {
       closeSheet();
-      await quickAdd({ name: ml ? `Shake · ${ml} ml tej` : 'Shake · vízzel', protein: c.shakeProtein(ml, t.scoop, t.milkPerL), source: 'shake' });
+      const milk = (ml * t.milkPerL) / 1000;
+      await quickAdd({ name: ml ? `Shake · ${ml} ml tej` : 'Shake · vízzel', protein: c.shakeProtein(ml, t.scoop, t.milkPerL), source: 'shake',
+        items: [{ key: 'feherjepor', name: 'Fehérjepor', cat: 'feherjepor', protein: t.scoop }, ...(milk > 0 ? [{ key: 'tej', name: 'Tej', cat: 'tejtermek', protein: milk }] : [])] });
     });
   });
 }
@@ -310,7 +434,10 @@ function chickenSheet(t) {
       const grams = g();
       if (!(grams > 0)) { root.querySelector('#ch-g').focus(); return; }
       closeSheet();
-      await quickAdd({ name: `Csirkemell · ${c.fmt(grams)} g ${cooked ? 'sült' : 'nyers'}`, protein: c.chickenProtein(grams, cooked, t.raw, t.cooked), source: 'chicken' });
+      const prot = c.chickenProtein(grams, cooked, t.raw, t.cooked);
+      await bumpUse(['csirkemell']);
+      await quickAdd({ name: `Csirkemell · ${c.fmt(grams)} g ${cooked ? 'sült' : 'nyers'}`, protein: prot, source: 'chicken',
+        items: [{ key: 'csirkemell', name: 'Csirkemell', cat: 'hus', protein: prot }] });
     });
   });
 }
@@ -331,7 +458,7 @@ function prepitSheet() {
       p.used = (p.used || 0) + 1;
       await db.setKV('prepit', S.prepit);
       closeSheet();
-      await quickAdd({ name: `Prepit · ${p.name}`, protein: p.protein, source: 'prepit' });
+      await quickAdd({ name: `Prepit · ${p.name}`, protein: p.protein, source: 'prepit', items: [{ key: 'prepit', name: 'Prepit ebéd', cat: 'keszetel', protein: p.protein }] });
     }));
     root.querySelector('#pp-add').addEventListener('click', async () => {
       const name = root.querySelector('#pp-name').value.trim();
@@ -343,7 +470,7 @@ function prepitSheet() {
       else S.prepit.push({ name, protein, used: 1 });
       await db.setKV('prepit', S.prepit);
       closeSheet();
-      await quickAdd({ name: `Prepit · ${name}`, protein, source: 'prepit' });
+      await quickAdd({ name: `Prepit · ${name}`, protein, source: 'prepit', items: [{ key: 'prepit', name: 'Prepit ebéd', cat: 'keszetel', protein }] });
     });
   });
 }
@@ -352,7 +479,7 @@ async function repeatYesterday() {
   const src = dayEntries(c.addDays(S.day, -1));
   if (!src.length) { toast('Az előző napon nem volt bejegyzés.'); return; }
   const added = [];
-  for (const e of src) added.push(await addEntry({ name: e.name, protein: e.protein, time: e.time, source: 'repeat' }));
+  for (const e of src) added.push(await addEntry({ name: e.name, protein: e.protein, time: e.time, source: e.source === 'repeat' ? 'repeat' : e.source, items: St.itemsOf(e) }));
   render();
   const sum = added.reduce((a, e) => a + e.protein, 0);
   toast(`+${c.fmt(sum)} g · ${added.length} tétel az előző napból`, () => removeEntries(added.map((e) => e.id)));
@@ -393,7 +520,8 @@ $('quick').addEventListener('click', (ev) => {
   if (!b) return;
   const t = S.templates.find((x) => x.id === b.dataset.t);
   if (!t) return;
-  if (t.kind === 'fixed') quickAdd({ name: t.detail ? `${t.name} · ${t.detail}` : t.name, protein: t.protein, source: t.id });
+  if (t.kind === 'fixed') quickAdd({ name: t.detail ? `${t.name} · ${t.detail}` : t.name, protein: t.protein, source: t.id, items: t.items });
+  else if (t.kind === 'food') foodSheet();
   else if (t.kind === 'shake') shakeSheet(t);
   else if (t.kind === 'chicken') chickenSheet(t);
   else if (t.kind === 'prepit') prepitSheet();
@@ -403,12 +531,211 @@ $('quick').addEventListener('click', (ev) => {
 $('omni').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const inp = $('omni-in');
-  const p = c.quickParse(inp.value);
-  if (!p) { inp.focus(); return; }
-  inp.value = '';
-  if (p.protein != null) { inp.blur(); await quickAdd({ name: p.name, protein: p.protein, source: 'text' }); }
-  else entrySheet(null, { name: p.name });
+  const text = inp.value.trim();
+  if (!text) { inp.focus(); return; }
+  inp.blur();
+  previewSheet(text, () => { inp.value = ''; });
 });
+
+// ---------- szöveges bevitel: előnézet ----------
+const dot = (cat) => `<span class="dot" style="background:${F.CATS[cat].color}" aria-hidden="true"></span>`;
+
+function previewSheet(text, onSaved) {
+  const items = F.parseText(text, allFoods());
+  const sh = F.shorthandProtein(items);
+  const rows = items.map((it, i) => ({ ...it, i, keep: true, value: it.known ? it.protein : (sh != null ? sh : ''), remember: true }));
+
+  openSheet('Előnézet', `
+    <div class="pv" id="pv-list"></div>
+    <div class="result"><span class="muted">Összesen</span><b id="pv-total">–</b></div>
+    <button class="btn" id="pv-save">Hozzáadás</button>
+    <p class="muted small" style="margin:0">Ha valami nem stimmel, töröld a tételt, és írd be pontosabban, például „150 g sült lazac”.</p>
+  `, (root) => {
+    const list = root.querySelector('#pv-list');
+    const total = () => rows.filter((r) => r.keep).reduce((a, r) => a + (c.parseNum(r.value) || 0), 0);
+    const paint = () => {
+      list.innerHTML = rows.filter((r) => r.keep).map((r) => r.known ? `
+        <div class="pv-row">${dot(r.food.cat)}<span class="pv-name">${esc(r.label)}</span>
+          <span class="pv-val">${fmtG(r.protein)} g</span>
+          <button class="x-btn" data-rm="${r.i}" aria-label="${esc(r.label)} törlése">×</button></div>` : `
+        <div class="pv-row unk">
+          <div class="pv-unk-head">${dot('egyeb')}<span class="pv-name">${esc(r.name)}</span><span class="tag">ismeretlen</span>
+            <button class="x-btn" data-rm="${r.i}" aria-label="${esc(r.name)} törlése">×</button></div>
+          <div class="row2">
+            <label class="field"><span class="field-l">Fehérje ebben a tételben (g)</span>
+              <input type="text" inputmode="decimal" data-val="${r.i}" value="${r.value === '' ? '' : c.fmt(r.value, r.value % 1 ? 1 : 0)}"></label>
+            <label class="chk"><input type="checkbox" data-rem="${r.i}" ${r.remember ? 'checked' : ''}><span>Megjegyzem</span></label>
+          </div></div>`).join('') || '<div class="empty">Nincs tétel.</div>';
+      root.querySelector('#pv-total').textContent = `${fmtG(r1(total()))} g`;
+      root.querySelector('#pv-save').textContent = `Hozzáadás · ${fmtG(r1(total()))} g`;
+    };
+    list.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-rm]');
+      if (b) { rows[Number(b.dataset.rm)].keep = false; paint(); }
+    });
+    list.addEventListener('input', (ev) => {
+      const v = ev.target.closest('[data-val]');
+      if (v) {
+        rows[Number(v.dataset.val)].value = v.value;
+        root.querySelector('#pv-total').textContent = `${fmtG(r1(total()))} g`;
+        root.querySelector('#pv-save').textContent = `Hozzáadás · ${fmtG(r1(total()))} g`;
+      }
+      const ch = ev.target.closest('[data-rem]');
+      if (ch) rows[Number(ch.dataset.rem)].remember = ch.checked;
+    });
+    paint();
+    const firstEmpty = list.querySelector('[data-val]');
+    if (firstEmpty && !firstEmpty.value) firstEmpty.focus();
+
+    root.querySelector('#pv-save').addEventListener('click', async () => {
+      const kept = rows.filter((r) => r.keep);
+      if (!kept.length) { closeSheet(); return; }
+      const bad = kept.find((r) => !r.known && !(c.parseNum(r.value) >= 0));
+      if (bad) { list.querySelector(`[data-val="${bad.i}"]`).focus(); return; }
+      const items = [];
+      for (const r of kept) {
+        if (r.known) {
+          items.push({ key: r.food.id, name: r.food.name, cat: r.food.cat, protein: r.protein, label: r.label });
+        } else {
+          const p = c.parseNum(r.value);
+          let key = `x-${F.norm(r.name)}`;
+          if (r.remember) {
+            const learned = F.learnFood(r, p);
+            S.customFoods = S.customFoods.filter((f) => f.id !== learned.id).concat(learned);
+            await db.setKV('foods', S.customFoods);
+            key = learned.id;
+          }
+          items.push({ key, name: r.name, cat: 'egyeb', protein: p, label: r.name });
+        }
+      }
+      await bumpUse(items.map((i) => i.key));
+      const name = items.map((i) => i.label).join(', ');
+      closeSheet();
+      onSaved && onSaved();
+      await quickAdd({ name: name.charAt(0).toUpperCase() + name.slice(1), protein: items.reduce((a, i) => a + i.protein, 0), source: 'text',
+        items: items.map(({ label, ...rest }) => rest) });
+    });
+  });
+}
+
+// ---------- Étel lap (a shake mintájára) ----------
+function foodSheet() {
+  const basket = [];
+  let sel = null;
+  let amount = 0;
+  let unit = 'g';
+  let cooked = false;
+  let query = '';
+
+  const sorted = () => allFoods().slice().sort((a, b) => (S.foodUse[b.id] || 0) - (S.foodUse[a.id] || 0));
+  const unitsOf = (f) => (f.perUnit != null ? ['adag'] : ['g', ...Object.keys(f.units || {})]);
+  const current = () => (sel ? F.proteinFor(sel, amount, unit, cooked) : 0);
+  const labelOf = () => {
+    const u = unit === 'g' ? (sel.liquid ? 'ml' : 'g') : F.unitLabel(unit);
+    return `${c.fmt(amount, amount % 1 ? 1 : 0)} ${u} ${sel.name.toLowerCase()}${cooked && sel.cooked != null ? ' (sült)' : ''}`;
+  };
+
+  openSheet('Étel', `
+    <div class="pv" id="fs-basket"></div>
+    <label class="field"><span class="sr">Keresés</span>
+      <input type="text" id="fs-q" placeholder="Keresés: lazac, túró, tojás…" autocomplete="off"></label>
+    <div class="chips" id="fs-chips"></div>
+    <div id="fs-panel"></div>
+    <div class="row2" id="fs-actions">
+      <button class="btn ghost" id="fs-more">+ Újabb tétel</button>
+      <button class="btn" id="fs-save">Mentés</button>
+    </div>
+  `, (root) => {
+    const paintBasket = () => {
+      root.querySelector('#fs-basket').innerHTML = basket.map((b, i) => `
+        <div class="pv-row">${dot(b.cat)}<span class="pv-name">${esc(b.label)}</span><span class="pv-val">${fmtG(b.protein)} g</span>
+        <button class="x-btn" data-brm="${i}" aria-label="${esc(b.label)} törlése">×</button></div>`).join('');
+    };
+    const paintChips = () => {
+      const q = F.norm(query);
+      const list = sorted().filter((f) => !q || F.norm(f.name).includes(q) || f.aliases.some((a) => a.startsWith(q)));
+      root.querySelector('#fs-chips').innerHTML = list.map((f) => `
+        <button class="chip${sel && sel.id === f.id ? ' on' : ''}" data-f="${esc(f.id)}">${dot(f.cat)}${esc(f.name)}</button>`).join('')
+        || '<span class="muted small">Nincs találat. A szövegmezőben új ételt is rögzíthetsz, utána itt is megjelenik.</span>';
+    };
+    const paintActions = () => {
+      const sum = basket.reduce((a, b) => a + b.protein, 0) + current();
+      root.querySelector('#fs-save').textContent = `Mentés · ${fmtG(r1(sum))} g`;
+      root.querySelector('#fs-save').disabled = !sel && !basket.length;
+      root.querySelector('#fs-more').disabled = !sel;
+    };
+    const paintPanel = () => {
+      const panel = root.querySelector('#fs-panel');
+      if (!sel) { panel.innerHTML = ''; paintActions(); return; }
+      const us = unitsOf(sel);
+      panel.innerHTML = `
+        <div class="food-panel">
+          ${us.length > 1 ? `<div class="seg seg-n" style="grid-template-columns:repeat(${us.length},1fr)" role="group" aria-label="Mértékegység">
+            ${us.map((u) => `<button type="button" data-u="${u}" aria-pressed="${u === unit}">${u === 'g' ? (sel.liquid ? 'ml' : 'g') : F.unitLabel(u)}</button>`).join('')}</div>` : ''}
+          <div class="stepper">
+            <button type="button" id="fs-minus" aria-label="Kevesebb">−</button>
+            <input type="text" id="fs-amt" inputmode="decimal" value="${c.fmt(amount, amount % 1 ? 1 : 0)}" aria-label="Mennyiség">
+            <button type="button" id="fs-plus" aria-label="Több">+</button>
+          </div>
+          ${sel.cooked != null ? `<div class="seg" role="group" aria-label="Súly típusa">
+            <button type="button" data-ck="0" aria-pressed="${!cooked}">Nyers · ${c.fmt(sel.per100)} g/100 g</button>
+            <button type="button" data-ck="1" aria-pressed="${cooked}">Sült · ${c.fmt(sel.cooked)} g/100 g</button></div>` : ''}
+          <div class="result"><span class="muted">${esc(sel.name)}</span><b id="fs-res">${fmtG(current())} g</b></div>
+        </div>`;
+      const inp = panel.querySelector('#fs-amt');
+      const step = () => (unit === 'g' ? 10 : 1);
+      const set = (v) => { amount = Math.max(0, r1(v)); inp.value = c.fmt(amount, amount % 1 ? 1 : 0); upd(); };
+      const upd = () => { panel.querySelector('#fs-res').textContent = `${fmtG(current())} g`; paintActions(); };
+      panel.querySelector('#fs-minus').addEventListener('click', () => set(amount - step()));
+      panel.querySelector('#fs-plus').addEventListener('click', () => set(amount + step()));
+      inp.addEventListener('input', () => { const v = c.parseNum(inp.value); amount = v >= 0 ? v : 0; upd(); });
+      panel.querySelectorAll('[data-u]').forEach((b) => b.addEventListener('click', () => {
+        unit = b.dataset.u;
+        amount = unit === 'g' ? (sel.portion || 100) : 1;
+        paintPanel();
+      }));
+      panel.querySelectorAll('[data-ck]').forEach((b) => b.addEventListener('click', () => { cooked = b.dataset.ck === '1'; paintPanel(); }));
+      paintActions();
+    };
+    const pick = (f) => {
+      sel = f;
+      cooked = false;
+      unit = f.perUnit != null ? 'adag' : (f.def || 'g');
+      amount = unit === 'g' ? (f.portion || 100) : 1;
+      paintChips();
+      paintPanel();
+    };
+    const pushCurrent = () => {
+      if (!sel || !(current() > 0)) return false;
+      basket.push({ key: sel.id, name: sel.name, cat: sel.cat, protein: current(), label: labelOf() });
+      return true;
+    };
+
+    root.querySelector('#fs-q').addEventListener('input', (ev) => { query = ev.target.value; paintChips(); });
+    root.querySelector('#fs-chips').addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-f]');
+      if (b) pick(allFoods().find((f) => f.id === b.dataset.f));
+    });
+    root.querySelector('#fs-basket').addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-brm]');
+      if (b) { basket.splice(Number(b.dataset.brm), 1); paintBasket(); paintActions(); }
+    });
+    root.querySelector('#fs-more').addEventListener('click', () => {
+      if (pushCurrent()) { sel = null; query = ''; root.querySelector('#fs-q').value = ''; paintBasket(); paintChips(); paintPanel(); }
+    });
+    root.querySelector('#fs-save').addEventListener('click', async () => {
+      pushCurrent();
+      if (!basket.length) return;
+      await bumpUse(basket.map((b) => b.key));
+      const name = basket.map((b) => b.label).join(', ');
+      closeSheet();
+      await quickAdd({ name: name.charAt(0).toUpperCase() + name.slice(1), protein: basket.reduce((a, b) => a + b.protein, 0), source: 'food',
+        items: basket.map(({ label, ...rest }) => rest) });
+    });
+    paintChips();
+    paintPanel();
+  });
+}
 
 $('manual-btn').addEventListener('click', () => entrySheet(null));
 $('day-prev').addEventListener('click', () => { S.day = c.addDays(S.day, -1); renderMa(); });
@@ -488,20 +815,7 @@ $('gpk').addEventListener('input', async () => {
   render();
 });
 
-$('export-btn').addEventListener('click', async () => {
-  const data = await db.exportAll();
-  const name = `protein-mentes-${S.today}.json`;
-  const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
-  const file = new File([blob], name, { type: 'application/json' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: 'Protein mentés' }); return; } catch (err) { if (err.name === 'AbortError') return; }
-  }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-});
+$('export-btn').addEventListener('click', doExport);
 
 $('import-file').addEventListener('change', async (ev) => {
   const f = ev.target.files[0];
@@ -538,6 +852,12 @@ setInterval(checkDay, 60000);
   render();
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    // ha új verzió veszi át az irányítást, egyszer újratölt, így a frissítés azonnal látszik
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 })();
