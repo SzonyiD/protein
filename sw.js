@@ -8,13 +8,13 @@ const SHELL = [
   'calc.js',
   'db.js',
   'manifest.webmanifest',
-  'icons/icon-192.png',
-  'icons/icon-512.png',
-  'icons/apple-touch-icon.png',
-  'fonts/unbounded-latin-wght-normal.woff2',
-  'fonts/unbounded-latin-ext-wght-normal.woff2',
-  'fonts/dm-sans-latin-wght-normal.woff2',
-  'fonts/dm-sans-latin-ext-wght-normal.woff2',
+  'icon-192.png',
+  'icon-512.png',
+  'apple-touch-icon.png',
+  'unbounded-latin-wght-normal.woff2',
+  'unbounded-latin-ext-wght-normal.woff2',
+  'dm-sans-latin-wght-normal.woff2',
+  'dm-sans-latin-ext-wght-normal.woff2',
 ];
 
 self.addEventListener('install', (ev) => {

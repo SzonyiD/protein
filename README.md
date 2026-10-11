@@ -14,4 +14,4 @@ Személyes napi fehérjekövető PWA. Az adatok csak a telefon böngészőjében
 - `app.js` – képernyők, sablonok, bevitel
 - `calc.js` – számítások (cél, shake, csirkemell, sorozat)
 - `db.js` – IndexedDB tároló, export/import
-- `sw.js`, `manifest.webmanifest`, `icons/`, `fonts/` – PWA és offline működés
+- `sw.js`, `manifest.webmanifest`, ikonok (`*.png`), betűk (`*.woff2`) – PWA és offline működés. Minden fájl a gyökérben van, így telefonról is egyszerűen feltölthető.
